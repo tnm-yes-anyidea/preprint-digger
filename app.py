@@ -1,3 +1,11 @@
+# /// script
+# dependencies = [
+#     "flask",
+#     "flask-cors",
+#     "fastembed",
+#     "sqlite-vec",
+# ]
+# ///
 import sqlite3
 import sqlite_vec
 import urllib.request
