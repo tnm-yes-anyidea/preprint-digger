@@ -14,18 +14,20 @@
         select, button { padding: 10px 15px; font-size: 15px; border-radius: 8px; border: 1px solid #d1d5db; }
         button { background: var(--accent); color: white; border: none; font-weight: bold; cursor: pointer; flex-grow: 1; }
         button:hover { background: #4338ca; }
+        button:disabled { background: #9ca3af; cursor: not-allowed; }
         .paper-card { background: var(--card); padding: 20px; border-radius: 12px; margin-bottom: 15px; position: relative; }
         .paper-title { font-size: 1.25em; margin: 0 0 8px 0; padding-right: 80px; }
         .match-badge { position: absolute; top: 20px; right: 20px; background: #ecfdf5; color: #059669; font-weight: bold; padding: 6px 12px; border-radius: 20px; border: 1px solid #a7f3d0; }
         .paper-summary { line-height: 1.6; color: #4b5563; font-size: 0.95em; }
         .actions a { text-decoration: none; color: var(--accent); font-weight: 600; font-size: 0.9em; }
+        #status { text-align: center; color: #4b5563; margin-top: 15px; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <div class="hero">
         <h1>🎯 ArXiv Semantic Radar</h1>
-        <p style="margin:0 0 10px 0; color:#4b5563; font-size:0.95em;">Describe your specific research niche. The AI will embed your query and rank the day's papers by semantic similarity, bypassing keyword limits.</p>
+        <p style="margin:0 0 10px 0; color:#4b5563; font-size:0.95em;">100% Client-Side. The AI model runs in your browser via WebAssembly.</p>
 
         <textarea id="search-profile" placeholder="e.g., Optimizing LLM inference using quantized KV cache on edge devices..."></textarea>
 
@@ -35,36 +37,107 @@
                 <option value="cs.AI">Artificial Intelligence (cs.AI)</option>
                 <option value="cs.CV">Computer Vision (cs.CV)</option>
             </select>
-            <button onclick="runRadar()">Scan Daily Papers</button>
+            <button id="scan-btn">Scan Daily Papers</button>
         </div>
+        <div id="status"></div>
     </div>
 
     <div id="feed"></div>
 
-    <script>
-        async function runRadar() {
-            const feed = document.getElementById('feed');
+    <script type="module">
+        import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.0';
+
+        // Must disable local models for GitHub Pages hosting
+        env.allowLocalModels = false;
+
+        let extractor = null;
+
+        function cosineSimilarity(vecA, vecB) {
+            let dotProduct = 0, normA = 0, normB = 0;
+            for (let i = 0; i < vecA.length; i++) {
+                dotProduct += vecA[i] * vecB[i];
+                normA += vecA[i] * vecA[i];
+                normB += vecB[i] * vecB[i];
+            }
+            return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+        }
+
+        async function loadModel(statusEl) {
+            if (!extractor) {
+                statusEl.innerText = "Downloading embedding model (80MB) to browser cache... (First run only)";
+                extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+            }
+        }
+
+        document.getElementById('scan-btn').addEventListener('click', async () => {
             const query = document.getElementById('search-profile').value;
             const category = document.getElementById('category').value;
+            const statusEl = document.getElementById('status');
+            const feed = document.getElementById('feed');
+            const btn = document.getElementById('scan-btn');
 
             if (!query) { alert("Please describe your research focus first."); return; }
 
-            feed.innerHTML = '<p style="text-align:center; color:#4b5563;">Fetching daily batch & running vector mathematics. This takes ~5 seconds...</p>';
+            btn.disabled = true;
+            feed.innerHTML = '';
 
             try {
-                const response = await fetch('http://127.0.0.1:5000/api/radar', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ category, query })
-                });
+                // 1. Load Model
+                await loadModel(statusEl);
 
-                const papers = await response.json();
-                feed.innerHTML = '';
+                // 2. Fetch arXiv via CORS proxy (fetching 50 papers to keep browser memory stable)
+                statusEl.innerText = "Fetching latest papers from arXiv...";
+                const arxivUrl = encodeURIComponent(`http://export.arxiv.org/api/query?search_query=cat:${category}&sortBy=submittedDate&sortOrder=descending&max_results=50`);
+                const response = await fetch(`https://api.allorigins.win/raw?url=${arxivUrl}`);
+                const xmlText = await response.text();
 
-                papers.forEach(paper => {
+                // 3. Parse XML
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+                const entries = xmlDoc.getElementsByTagName("entry");
+
+                let papers = [];
+                let summaries = [];
+
+                for (let i = 0; i < entries.length; i++) {
+                    const entry = entries[i];
+                    const summary = entry.getElementsByTagName("summary")[0].textContent.replace(/\n/g, ' ').trim();
+                    summaries.push(summary);
+                    papers.push({
+                        title: entry.getElementsByTagName("title")[0].textContent.replace(/\n/g, ' ').trim(),
+                        summary: summary,
+                        link: entry.getElementsByTagName("id")[0].textContent,
+                        authors: Array.from(entry.getElementsByTagName("author")).map(a => a.getElementsByTagName("name")[0].textContent)
+                    });
+                }
+
+                // 4. Generate Embeddings mathematically
+                statusEl.innerText = "Running WebAssembly vector mathematics...";
+
+                // Embed the user's search query
+                const queryOutput = await extractor([query], { pooling: 'mean', normalize: true });
+                const queryVector = queryOutput.tolist()[0];
+
+                // Embed all 50 paper summaries
+                const papersOutput = await extractor(summaries, { pooling: 'mean', normalize: true });
+                const paperVectors = papersOutput.tolist();
+
+                // 5. Score and Sort
+                for (let i = 0; i < papers.length; i++) {
+                    const similarity = cosineSimilarity(queryVector, paperVectors[i]);
+                    papers[i].score = Math.round(similarity * 100);
+                }
+
+                papers.sort((a, b) => b.score - a.score);
+
+                // 6. Render Top 15
+                statusEl.innerText = "Done!";
+                setTimeout(() => statusEl.innerText = "", 2000);
+
+                papers.slice(0, 15).forEach(paper => {
                     feed.innerHTML += `
                         <div class="paper-card">
-                            <div class="match-badge">🔥 ${paper.match_score}% Match</div>
+                            <div class="match-badge">🔥 ${paper.score}% Match</div>
                             <h3 class="paper-title">${paper.title}</h3>
                             <p style="font-size: 0.85em; color: #6b7280; margin-top: -5px;">${paper.authors.join(', ')}</p>
                             <p class="paper-summary">${paper.summary}</p>
@@ -74,10 +147,14 @@
                         </div>
                     `;
                 });
+
             } catch (err) {
-                feed.innerHTML = `<p style="color:red; text-align:center;">Backend connection error. Make sure app.py is running.</p>`;
+                statusEl.innerText = "";
+                feed.innerHTML = `<p style="color:red; text-align:center;">Error: ${err.message}</p>`;
+            } finally {
+                btn.disabled = false;
             }
-        }
+        });
     </script>
 </body>
 </html>
