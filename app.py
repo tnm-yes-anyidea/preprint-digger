@@ -11,6 +11,7 @@ import sqlite_vec
 import urllib.request
 import xml.etree.ElementTree as ET
 import json
+import threading
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from fastembed import TextEmbedding
@@ -18,9 +19,9 @@ from fastembed import TextEmbedding
 app = Flask(__name__)
 CORS(app)
 
-# 1. Load the ultra-light ONNX embedding model (BAAI/bge-small-en-v1.5 has 384 dimensions)
+# 1. Load the ultra-light ONNX embedding model (sentence-transformers/all-MiniLM-L6-v2 has 384 dimensions)
 print("Loading FastEmbed Model...")
-model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
 print("Model Ready!")
 
 # 2. Initialize SQLite with Vector Extension
@@ -52,7 +53,7 @@ db.execute('''
 ''')
 db.commit()
 
-def fetch_and_store_arxiv(category, max_results=100):
+def fetch_and_store_arxiv(category, max_results=25):
     url = f'http://export.arxiv.org/api/query?search_query=cat:{category}&sortBy=submittedDate&sortOrder=descending&max_results={max_results}'
     with urllib.request.urlopen(url) as response:
         xml = response.read()
@@ -100,6 +101,20 @@ def fetch_and_store_arxiv(category, max_results=100):
             ''', (row_id, json.dumps(emb.tolist())))
         db.commit()
 
+def background_sync(category):
+    print(f"Background syncing {category}...")
+    fetch_and_store_arxiv(category, 25) 
+    print("Sync complete.")
+
+@app.route('/api/sync', methods=['POST'])
+def trigger_sync():
+    data = request.json
+    category = data.get('category', 'cs.LG')
+    
+    # Run ingestion in a separate thread so the UI doesn't block
+    threading.Thread(target=background_sync, args=(category,)).start()
+    return jsonify({"status": "Sync started in background"})
+
 @app.route('/api/radar', methods=['POST'])
 def semantic_radar():
     data = request.json
@@ -108,9 +123,6 @@ def semantic_radar():
 
     if not user_query:
         return jsonify({"error": "Query required"}), 400
-
-    # Sync latest papers to the database
-    fetch_and_store_arxiv(category, 100)
 
     # Embed the user's search query
     query_vector = list(model.embed([user_query]))[0].tolist()
