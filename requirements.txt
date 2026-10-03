@@ -53,7 +53,7 @@ pyenchant==3.3.0
 pygdbmi==0.11.0.0
 PyGObject==3.56.3
 pyinotify==0.9.6
-pykickstart @ file:///builddir/build/BUILD/pykickstart-3.69-build/pykickstart-3.69
+pykickstart
 pyparted==3.13.0
 PySide6==6.11.2
 PySocks==1.7.1
