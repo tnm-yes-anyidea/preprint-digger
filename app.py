@@ -130,14 +130,12 @@ def semantic_radar():
     # Perform Native SQL Vector Search using sqlite-vec's MATCH operator
     cursor = db.cursor()
     cursor.execute('''
-        SELECT p.title, p.summary, p.authors, p.link, p.published, v.distance
-        FROM vec_papers v
-        JOIN papers p ON p.id = v.rowid
-        WHERE v.embedding MATCH ? AND p.category = ?
-        ORDER BY v.distance
-        LIMIT 15
-    ''', (json.dumps(query_vector), category))
-
+            SELECT p.title, p.summary, p.authors, p.link, p.published, v.distance
+            FROM vec_papers v
+            JOIN papers p ON p.id = v.rowid
+            WHERE v.embedding MATCH ? AND v.k = 15 AND p.category = ?
+            ORDER BY v.distance
+        ''', (json.dumps(query_vector), category))
     results = []
     for row in cursor.fetchall():
         # sqlite-vec returns L2 distance (lower is better). We invert it to a 0-100 score for the UI.
