@@ -27,3 +27,8 @@ Users describe their research problem in plain text, and the engine mathematical
     python3 app.py
     ```
 4. Open index.html directly in your browser.
+```
+<div align="center">
+  <img src="demo.gif" alt="Preprint Digger Demo" width="700"/>
+</div>
+```
