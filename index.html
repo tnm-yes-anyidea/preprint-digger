@@ -39,6 +39,7 @@
                 <option value="cs.AI">Artificial Intelligence</option>
                 <option value="cs.CR">Cryptography</option>
             </select>
+            <button id="sync-btn" style="flex-grow: 0.5;">Update DB</button>
             <button id="scan-btn" class="primary">Search SQLite Database</button>
         </div>
         <p id="status" style="text-align: center; color: var(--subtext); font-size: 0.9em; margin-top: 15px;"></p>
@@ -47,6 +48,27 @@
     <div id="feed"></div>
 
     <script>
+        document.getElementById('sync-btn').addEventListener('click', async () => {
+            const category = document.getElementById('category').value;
+            const status = document.getElementById('status');
+            const btn = document.getElementById('sync-btn');
+            
+            btn.disabled = true;
+            status.innerText = "Triggered background arXiv sync...";
+            
+            try {
+                await fetch('http://127.0.0.1:5000/api/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category })
+                });
+                setTimeout(() => { status.innerText = "Sync running in backend. You can search now."; btn.disabled = false; }, 2000);
+            } catch (err) {
+                status.innerText = "Failed to trigger sync.";
+                btn.disabled = false;
+            }
+        });
+
         document.getElementById('scan-btn').addEventListener('click', async () => {
             const query = document.getElementById('search-profile').value;
             const category = document.getElementById('category').value;
@@ -58,7 +80,7 @@
 
             btn.disabled = true;
             feed.innerHTML = '';
-            status.innerText = "Syncing latest arXiv papers & querying local SQLite Vector DB...";
+            status.innerText = "Querying local SQLite Vector DB..."; 
 
             try {
                 const response = await fetch('http://127.0.0.1:5000/api/radar', {
@@ -68,7 +90,7 @@
                 });
 
                 const papers = await response.json();
-                status.innerText = "";
+                status.innerText = `Found ${papers.length} matches.`;
 
                 papers.forEach(paper => {
                     feed.innerHTML += `
