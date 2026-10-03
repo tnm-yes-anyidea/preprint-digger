@@ -3,53 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ArXiv Semantic Radar</title>
+    <title>Preprint Digger (Native Engine)</title>
     <style>
-        :root { --bg: #f3f4f6; --card: #ffffff; --text: #1f2937; --accent: #4f46e5; }
-        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); max-width: 800px; margin: 0 auto; padding: 20px; }
-        .hero { background: var(--card); padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 25px; border-top: 5px solid var(--accent); }
-        h1 { margin-top: 0; font-size: 1.5em; color: var(--text); }
-        textarea { width: 100%; box-sizing: border-box; padding: 12px; margin: 10px 0; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; resize: vertical; min-height: 80px; }
-        .controls { display: flex; gap: 10px; align-items: center; }
-        select, button { padding: 10px 15px; font-size: 15px; border-radius: 8px; border: 1px solid #d1d5db; }
-        button { background: var(--accent); color: white; border: none; font-weight: bold; cursor: pointer; flex-grow: 1; }
-        button:hover { background: #4338ca; }
-        .paper-card { background: var(--card); padding: 20px; border-radius: 12px; margin-bottom: 15px; position: relative; }
-        .paper-title { font-size: 1.25em; margin: 0 0 8px 0; padding-right: 80px; }
-        .match-badge { position: absolute; top: 20px; right: 20px; background: #ecfdf5; color: #059669; font-weight: bold; padding: 6px 12px; border-radius: 20px; border: 1px solid #a7f3d0; }
-        .paper-summary { line-height: 1.6; color: #4b5563; font-size: 0.95em; }
-        .actions a { text-decoration: none; color: var(--accent); font-weight: 600; font-size: 0.9em; }
+        :root { --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --subtext: #94a3b8; --accent: #10b981; --border: #334155; }
+        body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+        .hero { background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 25px; border-top: 4px solid var(--accent); }
+        h1 { margin-top: 0; font-size: 1.8em; color: white; }
+        textarea { width: 100%; box-sizing: border-box; padding: 15px; margin: 15px 0; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; background: var(--bg); color: var(--text); min-height: 90px; resize: vertical;}
+        textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+        .controls { display: flex; gap: 12px; }
+        select, button { padding: 12px 16px; font-size: 15px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+        button.primary { background: var(--accent); color: #022c22; border: none; font-weight: bold; cursor: pointer; flex-grow: 1; transition: 0.2s; }
+        button.primary:hover { background: #059669; color: white; }
+        button:disabled { opacity: 0.5; cursor: wait; }
+        .paper-card { background: var(--card); padding: 25px; border-radius: 12px; margin-bottom: 20px; border: 1px solid var(--border); position: relative; }
+        .paper-title { font-size: 1.25em; margin: 0 0 10px 0; color: #e2e8f0; padding-right: 80px; }
+        .match-badge { position: absolute; top: 20px; right: 20px; background: #064e3b; color: #34d399; font-weight: bold; padding: 6px 12px; border-radius: 20px; font-size: 0.85em; border: 1px solid #059669; }
+        .paper-meta { font-size: 0.85em; color: var(--subtext); margin-bottom: 12px; }
+        .actions { margin-top: 15px; }
+        .actions a { text-decoration: none; color: var(--text); background: var(--border); padding: 6px 12px; border-radius: 6px; font-size: 0.9em; transition: 0.2s; }
+        .actions a:hover { background: #475569; }
     </style>
 </head>
 <body>
 
     <div class="hero">
-        <h1>🎯 ArXiv Semantic Radar</h1>
-        <p style="margin:0 0 10px 0; color:#4b5563; font-size:0.95em;">Describe your specific research niche. The AI will embed your query and rank the day's papers by semantic similarity, bypassing keyword limits.</p>
+        <h1>🔍 Preprint Digger</h1>
+        <p style="margin:0; color:var(--subtext);">Powered by FastEmbed & SQLite-Vec Persistent Storage.</p>
 
-        <textarea id="search-profile" placeholder="e.g., Optimizing LLM inference using quantized KV cache on edge devices..."></textarea>
+        <textarea id="search-profile" placeholder="Describe your exact research problem..."></textarea>
 
         <div class="controls">
             <select id="category">
-                <option value="cs.LG">Machine Learning (cs.LG)</option>
-                <option value="cs.AI">Artificial Intelligence (cs.AI)</option>
-                <option value="cs.CV">Computer Vision (cs.CV)</option>
+                <option value="cs.LG">Machine Learning</option>
+                <option value="cs.AI">Artificial Intelligence</option>
+                <option value="cs.CR">Cryptography</option>
             </select>
-            <button onclick="runRadar()">Scan Daily Papers</button>
+            <button id="scan-btn" class="primary">Search SQLite Database</button>
         </div>
+        <p id="status" style="text-align: center; color: var(--subtext); font-size: 0.9em; margin-top: 15px;"></p>
     </div>
 
     <div id="feed"></div>
 
     <script>
-        async function runRadar() {
-            const feed = document.getElementById('feed');
+        document.getElementById('scan-btn').addEventListener('click', async () => {
             const query = document.getElementById('search-profile').value;
             const category = document.getElementById('category').value;
+            const status = document.getElementById('status');
+            const feed = document.getElementById('feed');
+            const btn = document.getElementById('scan-btn');
 
-            if (!query) { alert("Please describe your research focus first."); return; }
+            if (!query) { alert("Please enter a query."); return; }
 
-            feed.innerHTML = '<p style="text-align:center; color:#4b5563;">Fetching daily batch & running vector mathematics. This takes ~5 seconds...</p>';
+            btn.disabled = true;
+            feed.innerHTML = '';
+            status.innerText = "Syncing latest arXiv papers & querying local SQLite Vector DB...";
 
             try {
                 const response = await fetch('http://127.0.0.1:5000/api/radar', {
@@ -59,15 +68,15 @@
                 });
 
                 const papers = await response.json();
-                feed.innerHTML = '';
+                status.innerText = "";
 
                 papers.forEach(paper => {
                     feed.innerHTML += `
                         <div class="paper-card">
                             <div class="match-badge">🔥 ${paper.match_score}% Match</div>
                             <h3 class="paper-title">${paper.title}</h3>
-                            <p style="font-size: 0.85em; color: #6b7280; margin-top: -5px;">${paper.authors.join(', ')}</p>
-                            <p class="paper-summary">${paper.summary}</p>
+                            <div class="paper-meta">${paper.authors.join(', ')} • ${paper.published}</div>
+                            <p style="color: var(--subtext); font-size: 0.95em;">${paper.summary}</p>
                             <div class="actions">
                                 <a href="${paper.link}" target="_blank">View on ArXiv ↗</a>
                             </div>
@@ -75,9 +84,12 @@
                     `;
                 });
             } catch (err) {
-                feed.innerHTML = `<p style="color:red; text-align:center;">Backend connection error. Make sure app.py is running.</p>`;
+                status.innerText = "";
+                feed.innerHTML = `<p style="color:#ef4444; text-align:center;">Error connecting to Python backend.</p>`;
+            } finally {
+                btn.disabled = false;
             }
-        }
+        });
     </script>
 </body>
 </html>
